@@ -11,17 +11,14 @@ from sklearn.linear_model import Ridge
 # Some helper functions to generate training and testing data
 ########################################################################################################################
 
-def get_square_wave(time_points=10000, transitions=100, show_plot=False):
-    # Generate time steps on which square wave alternates
-    transition_points = sorted(random.sample(range(time_points), k=transitions))
-
+def get_square_wave(time_points=10000, period=20, show_plot=False):
     # Select starting value for pseudo-random square wave
     value = random.sample([0, 1], k=1)
 
     # Construct square wave signal
     wave = np.zeros([time_points])
     start = 0
-    for stop in transition_points:
+    for stop in range(0, time_points, period):
         wave[start:stop] = value
         start = stop
         value = 0 if value == 1 else 1
@@ -32,7 +29,7 @@ def get_square_wave(time_points=10000, transitions=100, show_plot=False):
     return wave
 
 
-def get_sin_wave(time_points=10000, div_factor=25, show_plot=False):
+def get_sin_wave(time_points=10000, div_factor=5, show_plot=False):
     time = np.arange(0, time_points, 1)
     wave = np.sin(time/div_factor)  # Div factor to vary frequency
 
@@ -57,15 +54,31 @@ def combine_waves(wave1, wave2, time_points=10000, transitions=100, show_plot=Fa
     wave = np.zeros([time_points, 1])
     start = 0
     for stop in transition_points:
+        print('Frrom ', start, 'to:', stop, 'is wave id:', wave_id)
         wave[start:stop, 0] = wave1[start:stop] if wave_id == 1 else wave2[start:stop]
         y_target[start:stop] = wave_id
+        print('wave:\n', wave[start:stop, 0])
+        print('id:\n', y_target[start:stop])
         start = stop
         wave_id = 2 if wave_id == 1 else 1
+        print('New stop:', stop)
+        print('New id:', wave_id)
 
     if show_plot:
         plot_sequence(y_sequence=wave)
 
     return wave, y_target
+
+
+def plot_neural_activity(state_history, num_nodes, num_disp=10):
+    nodes = np.random.randint(0, num_nodes, size=num_disp)
+
+    sequences, labels = [], []
+    for node in nodes:
+        sequences.append(state_history[:, node])
+        labels.append('Node' + str(node))
+
+    plot_sequences(sequences, labels, title='Evolution of activity of selected nodes', y_label='Activation')
 
 
 def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
@@ -79,20 +92,18 @@ def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
     plot.show()
 
 
-def plot_sequences(sequence1, sequence2, label1, label2, title='Combined wave', time_points=10000):
-
-    # TODO: plot two lines here on top of each other
+def plot_sequences(sequences, labels, title='Combined wave', x_label='Time', y_label='Amplitude', time_points=10000):
 
     x = np.arange(0, time_points, 1)
-    plot.plot(x, sequence1)
-    plot.plot(x, sequence2)
-    # TODO
+    for sequence in sequences:
+        plot.plot(x, sequence)
+
     plot.title(title)
-    plot.xlabel('Time')
-    plot.ylabel('Amplitude')
+    plot.xlabel(x_label)
+    plot.ylabel(y_label)
     plot.grid(True, which='both')
     plot.axhline(y=0, color='k')
-    plot.legend([label1, label2], loc='upper left')
+    plot.legend(labels, loc='upper left')
     plot.show()
 
 ########################################################################################################################
@@ -105,11 +116,10 @@ class EchoStateNetwork:
                  learning_rate=1.,
                  bias=True,
                  input_size=1,
-                 output_size=1,
-                 reservoir_nodes=3,
+                 reservoir_nodes=100,
                  nonlinearity=np.tanh,
-                 reservoir_connectivity=0.2,  # How many percent of weights ought to be non-0
-                 ridge_alpha=0.5
+                 reservoir_connectivity=0.8,  # How many percent of weights ought to be non-0
+                 ridge_alpha=0.05
                  ):
 
         # Init some parameters
@@ -125,7 +135,6 @@ class EchoStateNetwork:
 
         w_in_dim = [reservoir_nodes, input_size + (1 if bias else 0)]
         w_dim = [reservoir_nodes, reservoir_nodes]
-        # w_out_dim = [output_size, esn_nodes]
 
         # Initialize input- and reservoir weights
         self.w_in = np.random.rand(w_in_dim[0], w_in_dim[1])
@@ -178,7 +187,13 @@ class EchoStateNetwork:
         x_history = self.get_reservoir_states(sequence)
 
         # Train output weights
-        self.ridge_model = Ridge(alpha=self.alpha).fit(x_history, y_target)
+        self.ridge_model = Ridge(
+            alpha=self.alpha,
+            fit_intercept=True,
+            copy_X=True
+        ).fit(x_history, y_target)
+
+        return x_history
 
 
     def predict(self, sequence):
@@ -213,17 +228,26 @@ wave_test, y_target_test = combine_waves(square_wave, sine_wave, show_plot=False
 # Train model
 ########################################################################################################################
 
-esn = EchoStateNetwork()
-esn.train(wave, y_target)
+esn = EchoStateNetwork(
+    reservoir_nodes=100,
+    reservoir_connectivity=0.3,
+    ridge_alpha=0.00000000000000000000002
+)
+x_history = esn.train(wave, y_target)
+
+plot_neural_activity(x_history, 100, num_disp=10)
 
 ########################################################################################################################
-# Predict on testing data
+# Predict and plot on training data
 ########################################################################################################################
 
 y_predicted = esn.predict(wave_test)
+plot_sequences([wave, y_target, y_predicted], ['wave', 'y_target', 'y_predicted'], title='Train data')
 
 ########################################################################################################################
-# Plot outputs
+# Predict and plot on testing data
 ########################################################################################################################
 
-plot_sequences(wave_test, y_predicted, 'wave_test', 'y_predicted')
+y_predicted = esn.predict(wave_test)
+plot_sequences([y_target_test, y_predicted], ['y_target_test', 'y_predicted'], title='Test data')
+
