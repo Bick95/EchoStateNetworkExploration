@@ -27,14 +27,7 @@ def get_square_wave(time_points=10000, transitions=100, show_plot=False):
         value = 0 if value == 1 else 1
 
     if show_plot:
-        time = np.arange(0, time_points, 1)
-        plot.plot(time, wave)
-        plot.title('Square wave')
-        plot.xlabel('Time')
-        plot.ylabel('Amplitude')
-        plot.grid(True, which='both')
-        plot.axhline(y=0, color='k')
-        plot.show()
+        plot_sequence(y_sequence=wave, title='Square wave')
 
     return wave
 
@@ -45,13 +38,7 @@ def get_sin_wave(time_points=10000, div_factor=25, show_plot=False):
 
     if show_plot:
         # Plot a sine wave using time and amplitude obtained for the sine wave
-        plot.plot(time, wave)
-        plot.title('Sine wave')
-        plot.xlabel('Time')
-        plot.ylabel('Amplitude')
-        plot.grid(True, which='both')
-        plot.axhline(y=0, color='k')
-        plot.show()
+        plot_sequence(y_sequence=wave, title='Sine wave')
 
     return wave
 
@@ -76,97 +63,164 @@ def combine_waves(wave1, wave2, time_points=10000, transitions=100, show_plot=Fa
         wave_id = 2 if wave_id == 1 else 1
 
     if show_plot:
-        time = np.arange(0, time_points, 1)
-        plot.plot(time, wave)
-        plot.title('Combined wave')
+        plot_sequence(y_sequence=wave)
+
+    return wave, y_target
+
+
+def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
+    x = np.arange(0, time_points, 1)
+    plot.plot(x, y_sequence)
+    plot.title(title)
+    plot.xlabel('Time')
+    plot.ylabel('Amplitude')
+    plot.grid(True, which='both')
+    plot.axhline(y=0, color='k')
+    plot.show()
+
+
+def plot_sequences(sequence1, sequence2):
+
+    # TODO: plot two lines here on top of each other
+
+    def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
+        x = np.arange(0, time_points, 1)
+        plot.plot(x, y_sequence)
+        plot.title(title)
         plot.xlabel('Time')
         plot.ylabel('Amplitude')
         plot.grid(True, which='both')
         plot.axhline(y=0, color='k')
         plot.show()
 
-    return wave, y_target
+########################################################################################################################
+# Define model architecture
+########################################################################################################################
+
+class EchoStateNetwork:
+
+    def __init__(self,
+                 learning_rate=1.,
+                 bias=True,
+                 input_size=1,
+                 output_size=1,
+                 reservoir_nodes=3,
+                 nonlinearity=np.tanh,
+                 reservoir_connectivity=0.2,  # How many percent of weights ought to be non-0
+                 ridge_alpha=0.5
+                 ):
+
+        # Init some parameters
+        self.bias = bias
+        self.nonlinearity = nonlinearity
+        self.alpha = ridge_alpha
+        self.learning_rate = learning_rate
+        self.reservoir_nodes = reservoir_nodes
+
+        # Compute network dimensions
+        reservoir_weights = reservoir_nodes ** 2
+        reservoir_nonzeros = int(np.ceil(reservoir_weights * reservoir_connectivity))
+
+        w_in_dim = [reservoir_nodes, input_size + (1 if bias else 0)]
+        w_dim = [reservoir_nodes, reservoir_nodes]
+        # w_out_dim = [output_size, esn_nodes]
+
+        # Initialize input- and reservoir weights
+        self.w_in = np.random.rand(w_in_dim[0], w_in_dim[1])
+        self.w = np.zeros(w_dim)
+
+        # Reservoir's pseudo-random init state
+        self.x_init = np.random.rand(reservoir_nodes)
+
+        # Initialize reservoir weights
+        nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
+        for index in nonzero_indices:
+            self.w[index[0], index[1]] = random.random()
+
+        # Placeholder init for ridge regression model
+        self.ridge_model = None
 
 
-# Train-Hyperparameter
-time_steps = 10000
+    def get_reservoir_states(self, sequence):
+        # Get input-output mappings
+        x = self.x_init.copy()  # Reservoir state
+        x_history = np.zeros([time_steps, self.reservoir_nodes])
+        constant = np.array([1])
+
+        # Calculate reservoir's state for each time step t
+        for t in range(time_steps):
+            # Add bias constant to training input for t'th time step or not
+            if self.bias:
+                input = np.concatenate([constant, sequence[t]], axis=0)
+            else:
+                input = np.array(sequence[t])
+
+            # Compute components needed for updating reservoir
+            in1 = np.sum(self.w_in * input, axis=1)
+            in2 = np.sum(self.w * x, axis=1)
+
+            # Combine terms and apply non-linearity
+            update = self.nonlinearity(in1 + in2)
+
+            # Update reservoir's state
+            x = (1. - self.learning_rate) * x + self.learning_rate * update
+
+            # Keep track of reservoir's states over course of processing input sequence
+            x_history[t, :] = x
+
+        return x_history
+
+
+    def train(self, sequence, y_target):
+        # Generate sequence of reservoir states as it iterates over train input sequence
+        x_history = self.get_reservoir_states(sequence)
+
+        # Train output weights
+        self.ridge_model = Ridge(alpha=self.alpha).fit(x_history, y_target)
+
+
+    def predict(self, sequence):
+        # Generate sequence of reservoir states as it iterates over train input sequence
+        x_history = self.get_reservoir_states(sequence)
+
+        # For each time step, predict the driving signal
+        y_predicted = self.ridge_model.predict(x_history)
+
+        return y_predicted
+
 
 ########################################################################################################################
 # Generate training and testing data
 ########################################################################################################################
 
+# Train-Hyperparameter
+time_steps = 10000
+
 # Get training input
-square_wave = get_square_wave(time_points=time_steps, show_plot=False)
-sine_wave = get_sin_wave(time_points=time_steps, show_plot=False)
+square_wave = get_square_wave(time_points=time_steps, show_plot=True)
+sine_wave = get_sin_wave(time_points=time_steps, show_plot=True)
 wave, y_target = combine_waves(square_wave, sine_wave, show_plot=True)
 
 # Get testing input
 square_wave = get_square_wave(time_points=time_steps, show_plot=False)
 sine_wave = get_sin_wave(time_points=time_steps, show_plot=False)
-wave_test, y_target_test = combine_waves(square_wave, sine_wave, show_plot=True)
+wave_test, y_target_test = combine_waves(square_wave, sine_wave, show_plot=False)
 
 
-# Define model architecture
-leaning_rate            = 1.
-bias                    = True
-input_size              = 1
-output_size             = 1
-reservoir_nodes         = 3
-nonlinearity            = np.tanh
-reservoir_connectivity  = 0.2        # How many percent of weights ought to be non-0
-reservoir_weights       = reservoir_nodes ** 2
-reservoir_nonzeros      = int(np.ceil(reservoir_weights * reservoir_connectivity))
+########################################################################################################################
+# Train model
+########################################################################################################################
 
-w_in_dim                = [reservoir_nodes, input_size + (1 if bias else 0)]
-w_dim                   = [reservoir_nodes, reservoir_nodes]
-# w_out_dim             = [output_size, esn_nodes]
+esn = EchoStateNetwork()
+esn.train(wave, y_target)
 
-w_in                    = np.random.rand(w_in_dim[0], w_in_dim[1])
-w                       = np.zeros(w_dim)
-w_out                   = None
+########################################################################################################################
+# Predict on testing data
+########################################################################################################################
 
-# Reservoir's init state
-x_init = np.random.rand(reservoir_nodes)
+y_predicted = esn.predict(wave_test)
 
+########################################################################################################################
+# Plot outputs
+########################################################################################################################
 
-# Initialize reservoir weights
-nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
-for index in nonzero_indices:
-    w[index[0], index[1]] = random.random()
-
-
-# Get input-output mappings
-x = x_init.copy()  # Reservoir state
-x_history = np.zeros([time_steps, reservoir_nodes])
-constant = np.array([1])
-
-for t in range(time_steps):
-    if bias:
-        input = np.concatenate([constant, wave[t]], axis=0)
-    else:
-        input = np.array(wave[t])
-
-    # Compute components needed for updating reservoir
-    in1 = np.sum(w_in * input, axis=1)
-    in2 = np.sum(w * x, axis=1)
-
-    # Combine terms and apply non-linearity
-    update = nonlinearity(in1 + in2)
-
-    # Update reservoir's state
-    x = (1. - leaning_rate) * x + leaning_rate * update
-
-    # Keep track of reservoir's states over course of processing input sequence
-    x_history[t, :] = x
-
-
-# Train output weights
-alpha = 0.5
-model = Ridge(alpha=alpha).fit(x_history, y_target)
-
-prediction = model.predict(x)
-
-#class EchoStateNetwork():
-
-#    def __init__(self):
-#        self.w_in =
