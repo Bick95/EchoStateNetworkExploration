@@ -79,19 +79,21 @@ def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
     plot.show()
 
 
-def plot_sequences(sequence1, sequence2):
+def plot_sequences(sequence1, sequence2, label1, label2, title='Combined wave', time_points=10000):
 
     # TODO: plot two lines here on top of each other
 
-    def plot_sequence(y_sequence, title='Combined wave', time_points=10000):
-        x = np.arange(0, time_points, 1)
-        plot.plot(x, y_sequence)
-        plot.title(title)
-        plot.xlabel('Time')
-        plot.ylabel('Amplitude')
-        plot.grid(True, which='both')
-        plot.axhline(y=0, color='k')
-        plot.show()
+    x = np.arange(0, time_points, 1)
+    plot.plot(x, sequence1)
+    plot.plot(x, sequence2)
+    # TODO
+    plot.title(title)
+    plot.xlabel('Time')
+    plot.ylabel('Amplitude')
+    plot.grid(True, which='both')
+    plot.axhline(y=0, color='k')
+    plot.legend([label1, label2], loc='upper left')
+    plot.show()
 
 ########################################################################################################################
 # Define model architecture
@@ -224,3 +226,4 @@ y_predicted = esn.predict(wave_test)
 # Plot outputs
 ########################################################################################################################
 
+plot_sequences(wave_test, y_predicted, 'wave_test', 'y_predicted')
