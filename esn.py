@@ -156,7 +156,7 @@ class EchoStateNetwork:
         w_dim = [reservoir_nodes, reservoir_nodes]
 
         # Initialize input- and reservoir weights
-        self.w_in = np.random.normal(loc=0.0, scale=.5, size=(w_in_dim[0], w_in_dim[1])) #np.random.rand(w_in_dim[0], w_in_dim[1])
+        self.w_in = np.random.normal(loc=0.0, scale=.7, size=(w_in_dim[0], w_in_dim[1])) #np.random.rand(w_in_dim[0], w_in_dim[1])
         self.w = np.zeros(w_dim)
 
         # Reservoir's pseudo-random init state
@@ -165,7 +165,7 @@ class EchoStateNetwork:
         # Initialize reservoir weights
         nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
         for index in nonzero_indices:
-            self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.1, size=None)
+            self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.2, size=None)
 
         # Placeholder init for ridge regression model
         self.ridge_model = None
