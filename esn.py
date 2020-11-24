@@ -165,7 +165,7 @@ class EchoStateNetwork:
         # Initialize reservoir weights
         nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
         for index in nonzero_indices:
-            self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.2, size=None)
+            self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.1, size=None)
 
         # Placeholder init for ridge regression model
         self.ridge_model = None
