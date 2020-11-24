@@ -106,6 +106,25 @@ def plot_sequences(sequences, labels, title='Combined wave', x_label='Time', y_l
     plot.legend(labels, loc='upper left')
     plot.show()
 
+def calc_NRMSE(pred, target):
+    mu = np.mean(target)
+    var = np.divide(np.sum(np.power(np.subtract(target, mu), 2)), target.size)
+    nrmse = np.sqrt(
+        np.divide(
+            np.divide(
+                np.sum(
+                    np.power(
+                        np.subtract(pred, target),
+                        2
+                    )
+                ),
+                target.size
+            ),
+            var
+        )
+    )
+    return nrmse
+
 ########################################################################################################################
 # Define model architecture
 ########################################################################################################################
@@ -137,19 +156,27 @@ class EchoStateNetwork:
         w_dim = [reservoir_nodes, reservoir_nodes]
 
         # Initialize input- and reservoir weights
-        self.w_in = np.random.rand(w_in_dim[0], w_in_dim[1])
+        self.w_in = np.random.normal(loc=0.0, scale=.5, size=(w_in_dim[0], w_in_dim[1])) #np.random.rand(w_in_dim[0], w_in_dim[1])
         self.w = np.zeros(w_dim)
 
         # Reservoir's pseudo-random init state
-        self.x_init = np.random.rand(reservoir_nodes)
+        self.x_init = np.random.normal(loc=0.0, scale=1., size=reservoir_nodes)
 
         # Initialize reservoir weights
         nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
         for index in nonzero_indices:
-            self.w[index[0], index[1]] = random.random()
+            self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.2, size=None)
 
         # Placeholder init for ridge regression model
         self.ridge_model = None
+
+        # Print stats:
+        print('Average weight w_in:\n', np.mean(self.w_in))
+        print('Average weight w (including 0s):\n', np.mean(self.w))
+        print('Average weight w (excluding 0s):\n', np.true_divide(self.w.sum(), (self.w != 0).sum()))
+        print('Average state value x_init:\n', np.mean(self.x_init))
+        print('Average w*x:\n', np.mean(self.w * self.x_init))
+
 
 
     def get_reservoir_states(self, sequence):
@@ -165,19 +192,32 @@ class EchoStateNetwork:
                 input = np.concatenate([constant, sequence[t]], axis=0)
             else:
                 input = np.array(sequence[t])
+            print('Input:\n', np.mean(input))
+            print('w_in:\n', np.mean(self.w_in))
+            print('self.w_in * input:\n', np.mean(self.w_in * input))
 
             # Compute components needed for updating reservoir
             in1 = np.sum(self.w_in * input, axis=1)
             in2 = np.sum(self.w * x, axis=1)
 
+            print('Input term:\t', np.mean(in1))
+            print('Update term:\t', np.mean(in2))
+
             # Combine terms and apply non-linearity
             update = self.nonlinearity(in1 + in2)
+            print('New x:\t\t', np.mean(update))
+
+            #print('Contrib old:\t', (1. - self.learning_rate) * x)
+            #print('Contrib new:\t', self.learning_rate * update)
 
             # Update reservoir's state
             x = (1. - self.learning_rate) * x + self.learning_rate * update
 
             # Keep track of reservoir's states over course of processing input sequence
             x_history[t, :] = x
+
+            #if t == 3:
+            #    break
 
         return x_history
 
@@ -228,14 +268,16 @@ wave_test, y_target_test = combine_waves(square_wave, sine_wave, show_plot=False
 # Train model
 ########################################################################################################################
 
+reservoir_nodes = 100
+
 esn = EchoStateNetwork(
-    reservoir_nodes=100,
-    reservoir_connectivity=0.3,
-    ridge_alpha=0.00000000000000000000002
+    reservoir_nodes=reservoir_nodes,
+    reservoir_connectivity=0.25,
+    ridge_alpha=0.1
 )
 x_history = esn.train(wave, y_target)
 
-plot_neural_activity(x_history, 100, num_disp=10)
+plot_neural_activity(x_history, reservoir_nodes, num_disp=5)
 
 ########################################################################################################################
 # Predict and plot on training data
@@ -251,3 +293,6 @@ plot_sequences([wave, y_target, y_predicted], ['wave', 'y_target', 'y_predicted'
 y_predicted = esn.predict(wave_test)
 plot_sequences([y_target_test, y_predicted], ['y_target_test', 'y_predicted'], title='Test data')
 
+# Compute error
+nrmse = calc_NRMSE(y_predicted, y_target_test)
+print('NRMSE:', nrmse)
