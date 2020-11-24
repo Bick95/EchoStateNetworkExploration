@@ -198,16 +198,16 @@ class EchoStateNetwork:
                 input = np.concatenate([constant, sequence[t]], axis=0)
             else:
                 input = np.array(sequence[t])
-            print('Input:\n', np.mean(input))
-            print('w_in:\n', np.mean(self.w_in))
-            print('self.w_in * input:\n', np.mean(self.w_in * input))
+            #print('Input:\n', np.mean(input))
+            #print('w_in:\n', np.mean(self.w_in))
+            #print('self.w_in * input:\n', np.mean(self.w_in * input))
 
             # Compute components needed for updating reservoir
             in1 = np.sum(self.w_in * input, axis=1)                 # Input term (input weights * input)
             in2 = np.sum(self.w * x, axis=1)                        # Update term (recurrent reservoir weights * previous state)
 
-            print('Input term:\t', np.mean(in1))
-            print('Update term:\t', np.mean(in2))
+            #print('Input term:\t', np.mean(in1))
+            #print('Update term:\t', np.mean(in2))
 
             # Combine terms and apply non-linearity
             update = self.nonlinearity(in1 + in2)
@@ -290,7 +290,7 @@ plot_neural_activity(x_history, reservoir_nodes, num_disp=num_nodes_plotted)
 ########################################################################################################################
 
 y_predicted = esn.predict(wave_test)
-plot_sequences([wave, y_target, y_predicted], ['wave', 'y_target', 'y_predicted'], title='Train data')
+plot_sequences([wave, y_target, y_predicted], ['Input wave', 'y_target', 'y_predicted'], title='Train data')
 
 ########################################################################################################################
 # Predict, plot, and evaluate on testing data
