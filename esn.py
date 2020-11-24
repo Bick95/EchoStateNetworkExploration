@@ -1,11 +1,12 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plot
-#from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Ridge
 
+
 # This script implements a simple illustration of the use of Echo State Networks (ESNs).
-# Followed set-up and training procedure described in: https://www.ai.rug.nl/minds/uploads/PracticalESN.pdf
+# Followed basic set-up and training procedure described in: https://www.ai.rug.nl/minds/uploads/PracticalESN.pdf
+
 
 ########################################################################################################################
 # Some helper functions to generate training and testing data
@@ -54,21 +55,20 @@ def combine_waves(wave1, wave2, time_points=10000, transitions=100, show_plot=Fa
     wave = np.zeros([time_points, 1])
     start = 0
     for stop in transition_points:
-        print('Frrom ', start, 'to:', stop, 'is wave id:', wave_id)
         wave[start:stop, 0] = wave1[start:stop] if wave_id == 1 else wave2[start:stop]
         y_target[start:stop] = wave_id
-        print('wave:\n', wave[start:stop, 0])
-        print('id:\n', y_target[start:stop])
         start = stop
         wave_id = 2 if wave_id == 1 else 1
-        print('New stop:', stop)
-        print('New id:', wave_id)
 
     if show_plot:
         plot_sequence(y_sequence=wave)
 
     return wave, y_target
 
+
+########################################################################################################################
+# Plotting functions
+########################################################################################################################
 
 def plot_neural_activity(state_history, num_nodes, num_disp=10):
     nodes = np.random.randint(0, num_nodes, size=num_disp)
@@ -106,6 +106,11 @@ def plot_sequences(sequences, labels, title='Combined wave', x_label='Time', y_l
     plot.legend(labels, loc='upper left')
     plot.show()
 
+
+########################################################################################################################
+# Calculate evaluation statistic
+########################################################################################################################
+
 def calc_NRMSE(pred, target):
     mu = np.mean(target)
     var = np.divide(np.sum(np.power(np.subtract(target, mu), 2)), target.size)
@@ -125,6 +130,7 @@ def calc_NRMSE(pred, target):
     )
     return nrmse
 
+
 ########################################################################################################################
 # Define model architecture
 ########################################################################################################################
@@ -137,8 +143,8 @@ class EchoStateNetwork:
                  input_size=1,
                  reservoir_nodes=100,
                  nonlinearity=np.tanh,
-                 reservoir_connectivity=0.8,  # How many percent of weights ought to be non-0
-                 ridge_alpha=0.05
+                 reservoir_connectivity=0.2,  # How many percent of weights ought to be non-0
+                 ridge_alpha=0.1
                  ):
 
         # Init some parameters
@@ -148,21 +154,21 @@ class EchoStateNetwork:
         self.learning_rate = learning_rate
         self.reservoir_nodes = reservoir_nodes
 
-        # Compute network dimensions
+        # Compute network dimensions and stats
         reservoir_weights = reservoir_nodes ** 2
         reservoir_nonzeros = int(np.ceil(reservoir_weights * reservoir_connectivity))
 
         w_in_dim = [reservoir_nodes, input_size + (1 if bias else 0)]
         w_dim = [reservoir_nodes, reservoir_nodes]
 
-        # Initialize input- and reservoir weights
-        self.w_in = np.random.normal(loc=0.0, scale=.7, size=(w_in_dim[0], w_in_dim[1])) #np.random.rand(w_in_dim[0], w_in_dim[1])
-        self.w = np.zeros(w_dim)
+        # Initialize input weights
+        self.w_in = np.random.normal(loc=0.0, scale=.7, size=(w_in_dim[0], w_in_dim[1]))
 
-        # Reservoir's pseudo-random init state
-        self.x_init = np.random.normal(loc=0.0, scale=1., size=reservoir_nodes)
+        # Initialize reservoir's pseudo-random init state
+        self.x_init = np.random.normal(loc=0.0, scale=.6, size=reservoir_nodes)
 
         # Initialize reservoir weights
+        self.w = np.zeros(w_dim)
         nonzero_indices = np.random.randint(low=reservoir_nodes, size=(reservoir_nonzeros, 2))
         for index in nonzero_indices:
             self.w[index[0], index[1]] = np.random.normal(loc=0.0, scale=.2, size=None)
@@ -175,15 +181,15 @@ class EchoStateNetwork:
         print('Average weight w (including 0s):\n', np.mean(self.w))
         print('Average weight w (excluding 0s):\n', np.true_divide(self.w.sum(), (self.w != 0).sum()))
         print('Average state value x_init:\n', np.mean(self.x_init))
-        print('Average w*x:\n', np.mean(self.w * self.x_init))
-
+        print('Average w*x_init:\n', np.mean(np.sum(self.w * self.x_init, axis=1)))
 
 
     def get_reservoir_states(self, sequence):
-        # Get input-output mappings
-        x = self.x_init.copy()  # Reservoir state
-        x_history = np.zeros([time_steps, self.reservoir_nodes])
-        constant = np.array([1])
+        # Get the evolution of the states of the reservoir's nodes as input sequence is presented to the reservoir
+
+        x = self.x_init.copy()                                      # Reservoir init state
+        x_history = np.zeros([time_steps, self.reservoir_nodes])    # Variable to be filled with reservoir states over time
+        constant = np.array([1])                                    # Bias constant
 
         # Calculate reservoir's state for each time step t
         for t in range(time_steps):
@@ -197,8 +203,8 @@ class EchoStateNetwork:
             print('self.w_in * input:\n', np.mean(self.w_in * input))
 
             # Compute components needed for updating reservoir
-            in1 = np.sum(self.w_in * input, axis=1)
-            in2 = np.sum(self.w * x, axis=1)
+            in1 = np.sum(self.w_in * input, axis=1)                 # Input term (input weights * input)
+            in2 = np.sum(self.w * x, axis=1)                        # Update term (recurrent reservoir weights * previous state)
 
             print('Input term:\t', np.mean(in1))
             print('Update term:\t', np.mean(in2))
@@ -207,26 +213,20 @@ class EchoStateNetwork:
             update = self.nonlinearity(in1 + in2)
             print('New x:\t\t', np.mean(update))
 
-            #print('Contrib old:\t', (1. - self.learning_rate) * x)
-            #print('Contrib new:\t', self.learning_rate * update)
-
             # Update reservoir's state
             x = (1. - self.learning_rate) * x + self.learning_rate * update
 
             # Keep track of reservoir's states over course of processing input sequence
             x_history[t, :] = x
 
-            #if t == 3:
-            #    break
-
         return x_history
 
 
     def train(self, sequence, y_target):
-        # Generate sequence of reservoir states as it iterates over train input sequence
+        # Generate sequence of reservoir states as reservoir iterates over train input sequence
         x_history = self.get_reservoir_states(sequence)
 
-        # Train output weights
+        # Train output weights using ridge regression model
         self.ridge_model = Ridge(
             alpha=self.alpha,
             fit_intercept=True,
@@ -237,21 +237,29 @@ class EchoStateNetwork:
 
 
     def predict(self, sequence):
-        # Generate sequence of reservoir states as it iterates over train input sequence
+        # Generate sequence of reservoir states as reservoir iterates over train input sequence
         x_history = self.get_reservoir_states(sequence)
 
-        # For each time step, predict the driving signal
+        # For each time step, predict the driving signal using output weights
         y_predicted = self.ridge_model.predict(x_history)
 
         return y_predicted
 
 
 ########################################################################################################################
-# Generate training and testing data
+# Set hyperparameters
 ########################################################################################################################
 
-# Train-Hyperparameter
 time_steps = 10000
+reservoir_nodes = 100
+reservoir_connectivity = 0.25
+ridge_alpha = 0.1
+num_nodes_plotted = 5
+
+
+########################################################################################################################
+# Generate training and testing data
+########################################################################################################################
 
 # Get training input
 square_wave = get_square_wave(time_points=time_steps, show_plot=True)
@@ -268,16 +276,14 @@ wave_test, y_target_test = combine_waves(square_wave, sine_wave, show_plot=False
 # Train model
 ########################################################################################################################
 
-reservoir_nodes = 100
-
 esn = EchoStateNetwork(
     reservoir_nodes=reservoir_nodes,
-    reservoir_connectivity=0.25,
-    ridge_alpha=0.1
+    reservoir_connectivity=reservoir_connectivity,
+    ridge_alpha=ridge_alpha
 )
 x_history = esn.train(wave, y_target)
 
-plot_neural_activity(x_history, reservoir_nodes, num_disp=5)
+plot_neural_activity(x_history, reservoir_nodes, num_disp=num_nodes_plotted)
 
 ########################################################################################################################
 # Predict and plot on training data
@@ -287,7 +293,7 @@ y_predicted = esn.predict(wave_test)
 plot_sequences([wave, y_target, y_predicted], ['wave', 'y_target', 'y_predicted'], title='Train data')
 
 ########################################################################################################################
-# Predict and plot on testing data
+# Predict, plot, and evaluate on testing data
 ########################################################################################################################
 
 y_predicted = esn.predict(wave_test)
