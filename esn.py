@@ -289,7 +289,7 @@ plot_neural_activity(x_history, reservoir_nodes, num_disp=num_nodes_plotted)
 # Predict and plot on training data
 ########################################################################################################################
 
-y_predicted = esn.predict(wave_test)
+y_predicted = esn.predict(wave)
 plot_sequences([wave, y_target, y_predicted], ['Input wave', 'y_target', 'y_predicted'], title='Train data')
 
 ########################################################################################################################
